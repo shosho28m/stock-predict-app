@@ -21,15 +21,10 @@ def get_company_name(symbol):
     try:
         ticker = yf.Ticker(symbol)
         info = ticker.info
-        try:
-            company_name = info.get('longName')
-        except:
-            try:
-                company_name = info.get('shortName')
-            except:
-                company_name = symbol
+        # 米国株・日本株どちらでも対応できるよう、優先順位をつけて取得
+        company_name = info.get('longName') or info.get('shortName') or symbol
         return company_name
-    except:
+    except :
         return symbol
 
 def translate_to_english(text):
@@ -46,10 +41,7 @@ def translate_to_english(text):
 def search_tickers(query):
     """企業名やキーワードから銘柄候補を取得する"""
     try:
-        # キーワードを英語に翻訳
         english_query = translate_to_english(query)
-        
-        # 翻訳後のキーワードで検索
         search = yf.Search(english_query, max_results=5)
         results = []
         for quote in search.quotes:
@@ -170,7 +162,7 @@ def main():
                     st.session_state['search_symbol'] = f
                     if 'ticker_search_input' in st.session_state:
                         st.session_state['ticker_search_input'] = ""
-                    st.session_state['is_valid_symbol'] = False # 銘柄が変わったのでリセット
+                    st.session_state['is_valid_symbol'] = False
                     st.rerun()
 
         st.sidebar.markdown("---")
@@ -182,7 +174,7 @@ def main():
                     st.session_state['search_symbol'] = h
                     if 'ticker_search_input' in st.session_state:
                         st.session_state['ticker_search_input'] = ""
-                    st.session_state['is_valid_symbol'] = False # 銘柄が変わったのでリセット
+                    st.session_state['is_valid_symbol'] = False
                     st.rerun()
 
         show_stock_predict_ui()
@@ -191,7 +183,6 @@ def show_stock_predict_ui():
     if 'search_symbol' not in st.session_state:
         st.session_state['search_symbol'] = 'AAPL'
     
-    # 存在確認フラグの初期化
     if 'is_valid_symbol' not in st.session_state:
         st.session_state['is_valid_symbol'] = False
 
@@ -216,7 +207,6 @@ def show_stock_predict_ui():
     col_input, col_period = st.columns([2, 1])
     with col_input:
         symbol = st.text_input("銘柄コード（確定）", value=current_symbol).upper()
-        # 入力内容が変わったら有効フラグを落とす
         if st.session_state.get('last_input_symbol') != symbol:
             st.session_state['is_valid_symbol'] = False
             st.session_state['last_input_symbol'] = symbol
@@ -244,16 +234,19 @@ def show_stock_predict_ui():
                         st.success("追加しました")
                         st.rerun()
 
-    # 予測処理
+    # --- 予測処理部 ---
+    # execute_btnが押されたか、以前の検索結果を表示し続ける必要がある場合
     if execute_btn or st.session_state.get('last_searched') == symbol:
         if not symbol.strip():
             st.error("銘柄コードを入力してください。")
         else:
+            # 予測開始
             st.session_state['search_symbol'] = symbol
             st.session_state['last_searched'] = symbol
         
             try:
                 with st.spinner('最新データを取得中...'):
+                    # ここで銘柄の妥当性を確認
                     data = yf.download(symbol, period=f"{period}y")
                 
                 if data.empty or len(data) < 10:
@@ -263,8 +256,12 @@ def show_stock_predict_ui():
                     st.session_state['is_valid_symbol'] = True
                     add_history(st.session_state['username'], symbol)
                     
-                    company_name = get_company_name(symbol)
+                    # --- 【ここが修正ポイント】 ---
+                    # 予測実行のフローの中で企業名を再取得し、表示を確定させる
+                    with st.spinner('企業情報を取得中...'):
+                        company_name = get_company_name(symbol)
                     st.subheader(f"🏢 企業名: {company_name}")
+                    # ---------------------------
                     
                     df_train = data.reset_index()
                     if isinstance(df_train.columns, pd.MultiIndex):
