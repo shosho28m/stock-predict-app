@@ -7,11 +7,20 @@ from supabase import create_client, Client
 import hashlib
 from datetime import datetime
 from deep_translator import GoogleTranslator
+import requests
 
 # --- Supabase 接続設定 ---
 url: str = st.secrets["SUPABASE_URL"]
 key: str = st.secrets["SUPABASE_KEY"]
 supabase: Client = create_client(url, key)
+
+def get_custom_session():
+    session = requests.Session()
+    # ブラウザになりすますためのヘッダー
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    })
+    return session
 
 def make_hashes(password):
     return hashlib.sha256(str.encode(password)).hexdigest()
@@ -247,7 +256,7 @@ def show_stock_predict_ui():
             try:
                 with st.spinner('最新データを取得中...'):
                     # ここで銘柄の妥当性を確認
-                    data = yf.download(symbol, period=f"{period}y")
+                    data = yf.download(symbol, period=f"{period}y", session=get_custom_session())
                 
                 if data.empty or len(data) < 10:
                     st.error(f"銘柄コード '{symbol}' のデータが見つからないか、少なすぎます。")
