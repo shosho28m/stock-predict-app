@@ -21,8 +21,15 @@ def get_company_name(symbol):
     try:
         ticker = yf.Ticker(symbol)
         info = ticker.info
-        return info.get('longName') or info.get('shortName') or symbol
-    except:
+        try:
+            company_name=info.get('longName')
+        except:
+            try:
+                company_name=info.get('shortName')
+            except:
+                company_name=symbol
+        return company_name
+    except :
         return symbol
 
 def search_tickers(query):
