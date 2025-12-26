@@ -230,76 +230,86 @@ def show_stock_predict_ui():
     btn_col1, btn_col2 = st.columns([1, 2])
     with btn_col1:
         execute_btn = st.button("🚀 予測を実行")
+    # お気に入りボタンの処理
     with btn_col2:
         if symbol in favs:
-            if st.button(f"✖ {symbol} をお気に入りから外す"):
+            if st.button(f"✖ {symbol} を解除"):
                 remove_favorite(st.session_state['username'], symbol)
                 st.rerun()
         else:
-            if st.button(f"⭐ {symbol} をお気に入りに追加"):
-                if add_favorite(st.session_state['username'], symbol):
-                    st.rerun()
-
+            # 【追加】空白でないときだけ登録ボタンを有効化、または警告
+            if st.button(f"⭐ {symbol} を追加"):
+                if not symbol.strip() :
+                    st.warning("有効な銘柄を入力してください。")
+                else:
+                    if add_favorite(st.session_state['username'], symbol):
+                        st.success("追加しました")
+                        st.rerun()
     # 予測処理
-    if execute_btn or st.session_state.get('last_searched') == symbol:
-        st.session_state['search_symbol'] = symbol
-        st.session_state['last_searched'] = symbol
-        add_history(st.session_state['username'], symbol)
+    if execute_btn:
+        # 【追加】空白チェック
+        if not symbol.strip():
+            st.error("銘柄コードを入力してください。")
+        else:
+            st.session_state['search_symbol'] = symbol
+            st.session_state['last_searched'] = symbol
         
-        try:
-            # 予測実行の直前で企業名を確実に取得
-            with st.spinner('最新データを取得中...'):
-                data = yf.download(symbol, period=f"{period}y")
-            
-            if data.empty:
-                st.error("データが見つかりませんでした。")
-            else:
-                # 取得した企業名を表示
-                company_name = get_company_name(symbol) # ここで最新の銘柄名を取得
-                st.subheader(f"🏢 企業名: {company_name}")
+            try:
+                # 予測実行の直前で企業名を確実に取得
+                with st.spinner('最新データを取得中...'):
+                    data = yf.download(symbol, period=f"{period}y")
                 
-                # データ整形
-                df_train = data.reset_index()
-                if isinstance(df_train.columns, pd.MultiIndex):
-                    df_train.columns = df_train.columns.get_level_values(0)
-                
-                df_train = df_train[['Date', 'Close']]
-                df_train.columns = ['ds', 'y']
-                df_train['ds'] = df_train['ds'].dt.tz_localize(None)
+                if data.empty or len(data) < 10:
+                    st.error(f"銘柄コード '{symbol}' のデータが見つからないか、少なすぎます。")
+                else:
+                    # ここで履歴に追加（正しい銘柄だと分かってから追加）
+                    add_history(st.session_state['username'], symbol)
+                    # 取得した企業名を表示
+                    company_name = get_company_name(symbol) # ここで最新の銘柄名を取得
+                    st.subheader(f"🏢 企業名: {company_name}")
+                    
+                    # データ整形
+                    df_train = data.reset_index()
+                    if isinstance(df_train.columns, pd.MultiIndex):
+                        df_train.columns = df_train.columns.get_level_values(0)
+                    
+                    df_train = df_train[['Date', 'Close']]
+                    df_train.columns = ['ds', 'y']
+                    df_train['ds'] = df_train['ds'].dt.tz_localize(None)
 
-                # Prophetモデル
-                with st.spinner('解析中...'):
-                    # changepoint_prior_scaleを元の適切な値（0.05程度）に戻すことをお勧めします
-                    model = Prophet(daily_seasonality=True, weekly_seasonality=True, yearly_seasonality=True, changepoint_prior_scale=0.05)
-                    model.fit(df_train)
-                    future = model.make_future_dataframe(periods=10)
-                    future['day_of_week'] = future['ds'].dt.dayofweek
-                    future = future[future['day_of_week'] < 5] # 土日除外
-                    forecast = model.predict(future)
+                    # Prophetモデル
+                    with st.spinner('解析中...'):
+                        # changepoint_prior_scaleを元の適切な値（0.05程度）に戻すことをお勧めします
+                        model = Prophet(daily_seasonality=True, weekly_seasonality=True, yearly_seasonality=True, changepoint_prior_scale=0.05)
+                        model.fit(df_train)
+                        future = model.make_future_dataframe(periods=10)
+                        future['day_of_week'] = future['ds'].dt.dayofweek
+                        future = future[future['day_of_week'] < 5] # 土日除外
+                        forecast = model.predict(future)
 
-                # Plotly可視化
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=df_train['ds'], y=df_train['y'], name="実績値", line=dict(color='#1f77b4')))
-                fig.add_trace(go.Scatter(x=forecast['ds'], y=forecast['yhat'], name="予測値", line=dict(color='#e377c2', dash='dash')))
-                fig.add_trace(go.Scatter(
-                    x=pd.concat([forecast['ds'], forecast['ds'][::-1]]),
-                    y=pd.concat([forecast['yhat_upper'], forecast['yhat_lower'][::-1]]),
-                    fill='toself', fillcolor='rgba(227,119,194,0.1)', line=dict(color='rgba(255,255,255,0)'),
-                    name="予測範囲"
-                ))
-                start_date = df_train['ds'].iloc[-60] if len(df_train) > 60 else df_train['ds'].iloc[0]
-                fig.update_layout(hovermode="x unified", xaxis_range=[start_date, forecast['ds'].iloc[-1]], template="plotly_white")
-                st.plotly_chart(fig, use_container_width=True)
+                    # Plotly可視化
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(x=df_train['ds'], y=df_train['y'], name="実績値", line=dict(color='#1f77b4')))
+                    fig.add_trace(go.Scatter(x=forecast['ds'], y=forecast['yhat'], name="予測値", line=dict(color='#e377c2', dash='dash')))
+                    fig.add_trace(go.Scatter(
+                        x=pd.concat([forecast['ds'], forecast['ds'][::-1]]),
+                        y=pd.concat([forecast['yhat_upper'], forecast['yhat_lower'][::-1]]),
+                        fill='toself', fillcolor='rgba(227,119,194,0.1)', line=dict(color='rgba(255,255,255,0)'),
+                        name="予測範囲"
+                    ))
+                    start_date = df_train['ds'].iloc[-60] if len(df_train) > 60 else df_train['ds'].iloc[0]
+                    fig.update_layout(hovermode="x unified", xaxis_range=[start_date, forecast['ds'].iloc[-1]], template="plotly_white")
+                    st.plotly_chart(fig, use_container_width=True)
 
-                # 数値表示
-                st.write("### 予測価格の詳細")
-                res_df = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(7)
-                res_df.columns = ['日付', '予測価格', '最低予想', '最高予想']
-                st.dataframe(res_df.style.format({"予測価格": "{:.2f}", "最低予想": "{:.2f}", "最高予想": "{:.2f}"}))
-                st.write("###### ※このチャートは推移傾向の目安のため、実際の変動とは異なる場合があります")
+                    # 数値表示
+                    st.write("### 予測価格の詳細")
+                    res_df = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(7)
+                    res_df.columns = ['日付', '予測価格', '最低予想', '最高予想']
+                    st.dataframe(res_df.style.format({"予測価格": "{:.2f}", "最低予想": "{:.2f}", "最高予想": "{:.2f}"}))
+                    st.write("###### ※このチャートは推移傾向の目安のため、実際の変動とは異なる場合があります")
 
-        except Exception as e:
-            st.error(f"エラーが発生しました: {e}")
+            except Exception as e:
+                st.error(f"エラーが発生しました: {e}")
 
 if __name__ == '__main__':
     main()
