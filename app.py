@@ -135,11 +135,14 @@ def main():
             new_user = st.text_input("ユーザー名")
             new_password = st.text_input("パスワード", type='password')
             if st.button("登録"):
-                try:
-                    create_user(new_user, new_password)
-                    st.success("アカウントを作成しました。ログインしてください。")
-                except:
-                    st.error("そのユーザー名は既に使用されています")
+                if (not new_user.strip()) or (not new_password.strip()):
+                    st.warning("ユーザー名とパスワードを入力してください。")
+                else:
+                    try:
+                        create_user(new_user, new_password)
+                        st.success("アカウントを作成しました。ログインしてください。")
+                    except:
+                        st.error("そのユーザー名は既に使用されています")
     else:
         st.sidebar.success(f"ログイン中: {st.session_state['username']}")
         
