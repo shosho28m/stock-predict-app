@@ -144,7 +144,8 @@ def main():
         st.sidebar.success(f"ログイン中: {st.session_state['username']}")
         
         if st.sidebar.button("ログアウト"):
-            st.session_state['logged_in'] = False
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
             st.rerun()
 
         with st.sidebar.expander("⚙️ アカウント設定"):
@@ -185,7 +186,7 @@ def main():
 
 def show_stock_predict_ui():
     if 'search_symbol' not in st.session_state:
-        st.session_state['search_symbol'] = 'AAPL'
+        st.session_state['search_symbol'] = ''
     
     if 'is_valid_symbol' not in st.session_state:
         st.session_state['is_valid_symbol'] = False
